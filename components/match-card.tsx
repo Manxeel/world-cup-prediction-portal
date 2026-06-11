@@ -1,14 +1,14 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useTransition, useMemo } from "react"
 import Image from "next/image"
 import { toast } from "sonner"
 import type { Match } from "@/lib/worldcup"
-import { savePrediction } from "@/app/actions/predictions"
+import { savePrediction, getMatchPredictions } from "@/app/actions/predictions"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { Check, Lock } from "lucide-react"
+import { Check, Lock, Users, ChevronDown, ChevronUp, Loader2 } from "lucide-react"
 
 type PredValue = { homeScore: number; awayScore: number; points: number | null }
 
@@ -48,6 +48,50 @@ export function MatchCard({ match, initial }: { match: Match; initial?: PredValu
   const [away, setAway] = useState<string>(initial ? String(initial.awayScore) : "")
   const [saved, setSaved] = useState<boolean>(!!initial)
   const [pending, startTransition] = useTransition()
+
+  const [showOthers, setShowOthers] = useState<boolean>(false)
+  const [others, setOthers] = useState<{ userName: string; homeScore: number; awayScore: number; points: number | null }[]>([])
+  const [loadingOthers, setLoadingOthers] = useState<boolean>(false)
+
+  const toggleOthers = async () => {
+    if (showOthers) {
+      setShowOthers(false)
+      return
+    }
+    if (others.length === 0) {
+      setLoadingOthers(true)
+      try {
+        const res = await getMatchPredictions(match.id)
+        setOthers(res)
+        setShowOthers(true)
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Error al cargar predicciones")
+      } finally {
+        setLoadingOthers(false)
+      }
+    } else {
+      setShowOthers(true)
+    }
+  }
+
+  const distribution = useMemo(() => {
+    if (others.length === 0) return null
+    let homeWins = 0
+    let draws = 0
+    let awayWins = 0
+    for (const p of others) {
+      if (p.homeScore > p.awayScore) homeWins++
+      else if (p.homeScore === p.awayScore) draws++
+      else awayWins++
+    }
+    const total = others.length
+    return {
+      homePct: total > 0 ? Math.round((homeWins / total) * 100) : 0,
+      drawPct: total > 0 ? Math.round((draws / total) * 100) : 0,
+      awayPct: total > 0 ? Math.round((awayWins / total) * 100) : 0,
+      total,
+    }
+  }, [others])
 
   const kickoff = new Date(match.kickoff)
   const dateLabel = kickoff.toLocaleDateString("es-ES", {
@@ -134,6 +178,96 @@ export function MatchCard({ match, initial }: { match: Match; initial?: PredValu
           <Button size="sm" onClick={handleSave} disabled={pending} className={cn(saved && "bg-primary/90")}>
             {pending ? "Guardando..." : saved ? "Actualizar" : "Guardar"}
           </Button>
+        </div>
+      )}
+
+      {locked && (
+        <div className="mt-3 border-t border-border/60 pt-3">
+          <button
+            onClick={toggleOthers}
+            disabled={loadingOthers}
+            className="flex w-full items-center justify-between text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          >
+            <span className="flex items-center gap-1">
+              <Users className="h-3.5 w-3.5" />
+              {loadingOthers ? "Cargando predicciones..." : "Predicciones de la comunidad"}
+            </span>
+            {loadingOthers ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : showOthers ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
+          </button>
+
+          {showOthers && others.length > 0 && (
+            <div className="mt-3 space-y-3">
+              {/* Distribution Progress Bar */}
+              {distribution && distribution.total > 0 && (
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                    <span>Local ({distribution.homePct}%)</span>
+                    <span>Empate ({distribution.drawPct}%)</span>
+                    <span>Visita ({distribution.awayPct}%)</span>
+                  </div>
+                  <div className="flex h-2 overflow-hidden rounded-full bg-muted/60">
+                    <div
+                      style={{ width: `${distribution.homePct}%` }}
+                      className="bg-emerald-500 transition-all"
+                      title={`Local: ${distribution.homePct}%`}
+                    />
+                    <div
+                      style={{ width: `${distribution.drawPct}%` }}
+                      className="bg-amber-500 transition-all"
+                      title={`Empate: ${distribution.drawPct}%`}
+                    />
+                    <div
+                      style={{ width: `${distribution.awayPct}%` }}
+                      className="bg-blue-500 transition-all"
+                      title={`Visita: ${distribution.awayPct}%`}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Individual predictions list */}
+              <div className="max-h-36 overflow-y-auto rounded-lg border border-border/50 bg-secondary/15 divide-y divide-border/30 pr-1">
+                {others.map((pred, idx) => (
+                  <div key={idx} className="flex items-center justify-between px-2.5 py-1.5 text-xs">
+                    <span className="font-medium text-muted-foreground truncate max-w-[120px]">
+                      {pred.userName}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold tabular-nums text-foreground">
+                        {pred.homeScore} - {pred.awayScore}
+                      </span>
+                      {pred.points !== null && (
+                        <span
+                          className={cn(
+                            "px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider tabular-nums",
+                            pred.points === 3
+                              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                              : pred.points === 1
+                              ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                              : "bg-muted text-muted-foreground"
+                          )}
+                        >
+                          +{pred.points}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {showOthers && others.length === 0 && (
+            <p className="mt-2 text-center text-xs text-muted-foreground">
+              Nadie ha predicho este partido todavía.
+            </p>
+          )}
         </div>
       )}
     </div>

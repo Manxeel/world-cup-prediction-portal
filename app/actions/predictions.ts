@@ -120,3 +120,27 @@ export async function getProfileStats(): Promise<ProfileStats> {
     totalPlayers: board.length,
   }
 }
+
+export async function getMatchPredictions(matchId: string) {
+  const matches = await getMatchesById()
+  const match = matches.get(matchId)
+  if (!match) throw new Error("Partido no encontrado")
+  const locked = match.finished || new Date(match.kickoff).getTime() <= Date.now()
+  if (!locked) {
+    throw new Error("No puedes ver las predicciones de otros jugadores hasta que el partido comience o finalice")
+  }
+
+  const rows = await db
+    .select({
+      userName: user.name,
+      homeScore: prediction.homeScore,
+      awayScore: prediction.awayScore,
+      points: prediction.points,
+    })
+    .from(prediction)
+    .innerJoin(user, eq(prediction.userId, user.id))
+    .where(eq(prediction.matchId, matchId))
+    .orderBy(sql`coalesce(${prediction.points}, 0) desc, ${user.name} asc`)
+
+  return rows
+}
