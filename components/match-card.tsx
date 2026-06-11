@@ -55,6 +55,7 @@ export function MatchCard({ match, initial }: { match: Match; initial?: PredValu
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "America/Santiago",
   })
 
   const metaLabel =
@@ -64,7 +65,7 @@ export function MatchCard({ match, initial }: { match: Match; initial?: PredValu
 
   const handleSave = () => {
     if (home === "" || away === "") {
-      toast.error("Ingresa ambos marcadores")
+      toast.error("Debes ingresar ambos marcadores")
       return
     }
     startTransition(async () => {
@@ -75,7 +76,7 @@ export function MatchCard({ match, initial }: { match: Match; initial?: PredValu
           awayScore: Number(away),
         })
         setSaved(true)
-        toast.success("Predicción guardada")
+        toast.success("Predicción guardada correctamente")
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "No se pudo guardar")
       }

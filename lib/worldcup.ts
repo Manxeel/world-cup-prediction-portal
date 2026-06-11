@@ -61,6 +61,7 @@ type RawGame = {
   away_team_name_en?: string
   home_team_label?: string
   away_team_label?: string
+  stadium_id?: string
 }
 
 type RawTeam = {
@@ -71,13 +72,68 @@ type RawTeam = {
   groups: string
 }
 
-// Parse "06/11/2026 13:00" (MM/DD/YYYY HH:mm) into an ISO string.
-function parseKickoff(raw: string): string {
+const STADIUM_TIMEZONES: Record<string, string> = {
+  "1": "America/Mexico_City",   // Estadio Azteca
+  "2": "America/Mexico_City",   // Estadio Akron (Guadalajara)
+  "3": "America/Monterrey",     // Estadio BBVA
+  "4": "America/Chicago",       // AT&T Stadium (Dallas)
+  "5": "America/Chicago",       // NRG Stadium (Houston)
+  "6": "America/Chicago",       // GEHA Field at Arrowhead Stadium (Kansas City)
+  "7": "America/New_York",      // Mercedes-Benz Stadium (Atlanta)
+  "8": "America/New_York",      // Hard Rock Stadium (Miami)
+  "9": "America/New_York",      // Gillette Stadium (Boston)
+  "10": "America/New_York",     // Lincoln Financial Field (Philadelphia)
+  "11": "America/New_York",     // MetLife Stadium (New York)
+  "12": "America/Toronto",      // BMO Field (Toronto)
+  "13": "America/Vancouver",    // BC Place (Vancouver)
+  "14": "America/Los_Angeles",  // Lumen Field (Seattle)
+  "15": "America/Los_Angeles",  // Levi's Stadium (San Francisco)
+  "16": "America/Los_Angeles",  // SoFi Stadium (Los Angeles)
+}
+
+function getOffsetAtTime(utcMs: number, timezone: string): number {
+  const d = new Date(utcMs)
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    second: "numeric",
+    hour12: false,
+  }).formatToParts(d)
+  
+  const partVal = (type: string) => Number(parts.find(p => p.type === type)?.value)
+  
+  const year = partVal("year")
+  const month = partVal("month")
+  const day = partVal("day")
+  let hour = partVal("hour")
+  if (hour === 24) hour = 0
+  const minute = partVal("minute")
+  const second = partVal("second")
+  
+  return Date.UTC(year, month - 1, day, hour, minute, second) - utcMs
+}
+
+// Parse "06/11/2026 13:00" (MM/DD/YYYY HH:mm) in stadium timezone into an ISO string.
+function parseKickoff(raw: string, stadiumId?: string): string {
   try {
     const [datePart, timePart = "00:00"] = raw.trim().split(" ")
     const [mm, dd, yyyy] = datePart.split("/").map(Number)
     const [hh, min] = timePart.split(":").map(Number)
-    const d = new Date(Date.UTC(yyyy, mm - 1, dd, hh, min))
+    
+    const targetLocalMs = Date.UTC(yyyy, mm - 1, dd, hh, min)
+    const timezone = (stadiumId && STADIUM_TIMEZONES[stadiumId]) || "UTC"
+    
+    let utcGuess = targetLocalMs
+    for (let i = 0; i < 2; i++) {
+      const offset = getOffsetAtTime(utcGuess, timezone)
+      utcGuess = targetLocalMs - offset
+    }
+    
+    const d = new Date(utcGuess)
     if (Number.isNaN(d.getTime())) return new Date().toISOString()
     return d.toISOString()
   } catch {
@@ -194,7 +250,7 @@ export async function getMatches(): Promise<Match[]> {
       homeScore: finished ? Number(g.home_score) : null,
       awayScore: finished ? Number(g.away_score) : null,
       finished,
-      kickoff: parseKickoff(g.local_date),
+      kickoff: parseKickoff(g.local_date, g.stadium_id),
       kickoffRaw: g.local_date,
     }
   })
