@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation"
-import { headers } from "next/headers"
+import { headers, cookies } from "next/headers"
 import Link from "next/link"
 import { auth } from "@/lib/auth"
 import { getMatches, type Match } from "@/lib/worldcup"
@@ -13,6 +13,14 @@ export const dynamic = "force-dynamic"
 export default async function HomePage() {
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user) redirect("/sign-in")
+
+  // ponytail: Auto-redirect if there is a pending group invitation code stored in a cookie
+  const cookieStore = await cookies()
+  const pendingCode = cookieStore.get("pending_join_code")?.value
+  if (pendingCode) {
+    cookieStore.delete("pending_join_code")
+    redirect(`/grupos/join?code=${pendingCode}`)
+  }
 
   let matches: Match[] = []
   let loadError = false

@@ -1,50 +1,21 @@
-// World Cup data layer — fetches from the free worldcup26.ir API (no key required)
-// and normalizes the raw string-based payloads into typed objects.
+// World Cup data layer — reads from the local DB with auto-refresh from
+// the worldcup26.ir API when data is stale (>2 min). No API key required.
 
+import { db } from "@/lib/db"
+import { team as teamTable, match as matchTable } from "@/lib/db/schema"
 import { teamNameEs, translateKnockoutLabel } from "@/lib/team-names-es"
+import { desc, sql } from "drizzle-orm"
+
+// Re-export client-safe types/constants so existing `from "@/lib/worldcup"` imports
+// in server code keep working.
+export { PHASE_FILTERS } from "@/lib/worldcup-types"
+export type { Team, Match, MatchPhase } from "@/lib/worldcup-types"
+import type { Team, Match, MatchPhase } from "@/lib/worldcup-types"
 
 const API_BASE = "https://worldcup26.ir/get"
 
-export type Team = {
-  id: string
-  name: string
-  flag: string
-  fifaCode: string
-  group: string
-}
-
-export type MatchPhase = "group" | "r32" | "r16" | "qf" | "sf" | "third" | "final"
-
-export const PHASE_FILTERS: { value: MatchPhase | "all"; label: string }[] = [
-  { value: "all", label: "Todos" },
-  { value: "group", label: "Grupos" },
-  { value: "r32", label: "Dieciseisavos" },
-  { value: "r16", label: "Octavos" },
-  { value: "qf", label: "Cuartos" },
-  { value: "sf", label: "Semifinal" },
-  { value: "third", label: "3.er puesto" },
-  { value: "final", label: "Final" },
-]
-
-export type Match = {
-  id: string
-  group: string
-  matchday: string
-  type: string
-  phase: MatchPhase
-  stage: string
-  homeTeamId: string
-  awayTeamId: string
-  homeName: string
-  awayName: string
-  homeFlag: string
-  awayFlag: string
-  homeScore: number | null
-  awayScore: number | null
-  finished: boolean
-  kickoff: string // ISO string
-  kickoffRaw: string
-}
+// ponytail: 2-min staleness window — first visitor after this refreshes from API
+const SYNC_STALE_MS = 2 * 60 * 1000
 
 type RawGame = {
   id: string
@@ -188,70 +159,166 @@ function stageLabel(type: string, matchday: string): string {
   }
 }
 
-let teamsCache: Map<string, RawTeam> | null = null
-
-async function getTeamsMap(): Promise<Map<string, RawTeam>> {
-  if (teamsCache) return teamsCache
-  const res = await fetch(`${API_BASE}/teams`, { next: { revalidate: 3600 } })
-  if (!res.ok) throw new Error("No se pudieron cargar los equipos")
-  const json = (await res.json()) as { teams: RawTeam[] }
-  const map = new Map<string, RawTeam>()
-  for (const t of json.teams) map.set(t.id, t)
-  teamsCache = map
-  return map
-}
-
 function resolveTeamName(
-  team: RawTeam | undefined,
-  nameEn?: string,
-  label?: string,
+  teamRow: { fifaCode: string; nameEn: string } | undefined,
+  label?: string | null,
 ): string {
   if (label) return translateKnockoutLabel(label)
-  return teamNameEs(team?.fifa_code, nameEn ?? team?.name_en)
+  return teamNameEs(teamRow?.fifaCode, teamRow?.nameEn)
 }
 
+// ---- API fetch + DB sync ----
+
+/** Fetch teams and matches from the external API and upsert into DB. */
+export async function syncMatchesFromAPI(): Promise<{ teams: number; matches: number }> {
+  const [teamsRes, gamesRes] = await Promise.all([
+    fetch(`${API_BASE}/teams`, { cache: "no-store" }),
+    fetch(`${API_BASE}/games`, { cache: "no-store" }),
+  ])
+  if (!teamsRes.ok || !gamesRes.ok) throw new Error("API fetch failed")
+
+  const teamsJson = (await teamsRes.json()) as { teams: RawTeam[] }
+  const gamesJson = (await gamesRes.json()) as { games: RawGame[] }
+
+  // Upsert teams
+  for (const t of teamsJson.teams) {
+    await db
+      .insert(teamTable)
+      .values({
+        id: t.id,
+        nameEn: t.name_en,
+        flag: t.flag,
+        fifaCode: t.fifa_code,
+        groupLetter: t.groups,
+      })
+      .onConflictDoUpdate({
+        target: teamTable.id,
+        set: {
+          nameEn: t.name_en,
+          flag: t.flag,
+          fifaCode: t.fifa_code,
+          groupLetter: t.groups,
+        },
+      })
+  }
+
+  // Upsert matches
+  const now = new Date()
+  for (const g of gamesJson.games) {
+    const finished = String(g.finished).toUpperCase() === "TRUE"
+    await db
+      .insert(matchTable)
+      .values({
+        id: g.id,
+        groupLetter: g.group,
+        matchday: g.matchday,
+        type: g.type,
+        homeTeamId: g.home_team_id,
+        awayTeamId: g.away_team_id,
+        homeScore: finished ? Number(g.home_score) : null,
+        awayScore: finished ? Number(g.away_score) : null,
+        finished,
+        kickoff: parseKickoff(g.local_date, g.stadium_id),
+        kickoffRaw: g.local_date,
+        stadiumId: g.stadium_id ?? null,
+        homeTeamLabel: g.home_team_label ?? null,
+        awayTeamLabel: g.away_team_label ?? null,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: matchTable.id,
+        set: {
+          groupLetter: g.group,
+          matchday: g.matchday,
+          type: g.type,
+          homeTeamId: g.home_team_id,
+          awayTeamId: g.away_team_id,
+          homeScore: finished ? Number(g.home_score) : null,
+          awayScore: finished ? Number(g.away_score) : null,
+          finished,
+          kickoff: parseKickoff(g.local_date, g.stadium_id),
+          kickoffRaw: g.local_date,
+          stadiumId: g.stadium_id ?? null,
+          homeTeamLabel: g.home_team_label ?? null,
+          awayTeamLabel: g.away_team_label ?? null,
+          updatedAt: now,
+        },
+      })
+  }
+
+  return { teams: teamsJson.teams.length, matches: gamesJson.games.length }
+}
+
+// ---- Throttled sync: only hits API if DB data is stale ----
+
+async function syncIfStale(): Promise<void> {
+  const [latest] = await db
+    .select({ updatedAt: matchTable.updatedAt })
+    .from(matchTable)
+    .orderBy(desc(matchTable.updatedAt))
+    .limit(1)
+
+  const age = latest ? Date.now() - latest.updatedAt.getTime() : Infinity
+  if (age > SYNC_STALE_MS) {
+    try {
+      await syncMatchesFromAPI()
+    } catch (err) {
+      // ponytail: if API is down but we have DB data, swallow the error
+      if (latest) {
+        console.warn("API sync failed, using existing DB data:", err)
+      } else {
+        throw err
+      }
+    }
+  }
+}
+
+// ---- Public API (same signatures as before) ----
+
 export async function getTeams(): Promise<Team[]> {
-  const map = await getTeamsMap()
-  return [...map.values()].map((t) => ({
+  await syncIfStale()
+  const rows = await db.select().from(teamTable)
+  return rows.map((t) => ({
     id: t.id,
-    name: teamNameEs(t.fifa_code, t.name_en),
+    name: teamNameEs(t.fifaCode, t.nameEn),
     flag: t.flag,
-    fifaCode: t.fifa_code,
-    group: t.groups,
+    fifaCode: t.fifaCode,
+    group: t.groupLetter,
   }))
 }
 
 export async function getMatches(): Promise<Match[]> {
-  const [res, teams] = await Promise.all([
-    fetch(`${API_BASE}/games`, { next: { revalidate: 120 } }),
-    getTeamsMap(),
-  ])
-  if (!res.ok) throw new Error("No se pudieron cargar los partidos")
-  const json = (await res.json()) as { games: RawGame[] }
+  await syncIfStale()
 
-  return json.games.map((g) => {
-    const home = teams.get(g.home_team_id)
-    const away = teams.get(g.away_team_id)
-    const finished = String(g.finished).toUpperCase() === "TRUE"
-    const phase = normalizePhase(g.type)
+  const [matchRows, teamRows] = await Promise.all([
+    db.select().from(matchTable),
+    db.select().from(teamTable),
+  ])
+
+  const teams = new Map(teamRows.map((t) => [t.id, t]))
+
+  return matchRows.map((m) => {
+    const home = teams.get(m.homeTeamId)
+    const away = teams.get(m.awayTeamId)
+    const phase = normalizePhase(m.type)
     return {
-      id: g.id,
-      group: g.group,
-      matchday: g.matchday,
-      type: g.type,
+      id: m.id,
+      group: m.groupLetter,
+      matchday: m.matchday,
+      type: m.type,
       phase,
-      stage: stageLabel(g.type, g.matchday),
-      homeTeamId: g.home_team_id,
-      awayTeamId: g.away_team_id,
-      homeName: resolveTeamName(home, g.home_team_name_en, g.home_team_label),
-      awayName: resolveTeamName(away, g.away_team_name_en, g.away_team_label),
+      stage: stageLabel(m.type, m.matchday),
+      homeTeamId: m.homeTeamId,
+      awayTeamId: m.awayTeamId,
+      homeName: resolveTeamName(home, m.homeTeamLabel),
+      awayName: resolveTeamName(away, m.awayTeamLabel),
       homeFlag: home?.flag ?? "",
       awayFlag: away?.flag ?? "",
-      homeScore: finished ? Number(g.home_score) : null,
-      awayScore: finished ? Number(g.away_score) : null,
-      finished,
-      kickoff: parseKickoff(g.local_date, g.stadium_id),
-      kickoffRaw: g.local_date,
+      homeScore: m.homeScore,
+      awayScore: m.awayScore,
+      finished: m.finished,
+      kickoff: m.kickoff,
+      kickoffRaw: m.kickoffRaw,
     }
   })
 }

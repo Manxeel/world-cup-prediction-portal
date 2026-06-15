@@ -1,26 +1,88 @@
 <svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <style>
-    @media (prefers-color-scheme: light) {
-      .background { fill: black; }
-      .foreground { fill: white; }
-    }
-    @media (prefers-color-scheme: dark) {
-      .background { fill: white; }
-      .foreground { fill: black; }
-    }
-  </style>
-  <g clip-path="url(#clip0_7960_43945)">
-    <rect class="background" width="180" height="180" rx="37" />
-    <g style="transform: scale(95%); transform-origin: center">
-      <path class="foreground"
-        d="M101.141 53H136.632C151.023 53 162.689 64.6662 162.689 79.0573V112.904H148.112V79.0573C148.112 78.7105 148.098 78.3662 148.072 78.0251L112.581 112.898C112.701 112.902 112.821 112.904 112.941 112.904H148.112V126.672H112.941C98.5504 126.672 86.5638 114.891 86.5638 100.5V66.7434H101.141V100.5C101.141 101.15 101.191 101.792 101.289 102.422L137.56 66.7816C137.255 66.7563 136.945 66.7434 136.632 66.7434H101.141V53Z" />
-      <path class="foreground"
-        d="M65.2926 124.136L14 66.7372H34.6355L64.7495 100.436V66.7372H80.1365V118.47C80.1365 126.278 70.4953 129.958 65.2926 124.136Z" />
-    </g>
-  </g>
   <defs>
-    <clipPath id="clip0_7960_43945">
-      <rect width="180" height="180" fill="white" />
+    <!-- Background Gradient: Rich Pitch Green -->
+    <linearGradient id="bg-grad" x1="0" y1="0" x2="180" y2="180" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#022c22" />
+      <stop offset="50%" stop-color="#044e36" />
+      <stop offset="100%" stop-color="#064e3b" />
+    </linearGradient>
+
+    <!-- Gold Gradient for Shield Border and Trophy -->
+    <linearGradient id="gold-grad" x1="90" y1="25" x2="90" y2="155" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#fef08a" />
+      <stop offset="50%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#b45309" />
+    </linearGradient>
+
+    <!-- Trophy Gold Highlight -->
+    <linearGradient id="trophy-gold" x1="90" y1="50" x2="90" y2="135" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#fbbf24" />
+      <stop offset="40%" stop-color="#d97706" />
+      <stop offset="100%" stop-color="#78350f" />
+    </linearGradient>
+
+    <!-- Green Band for Trophy Base -->
+    <linearGradient id="green-band" x1="80" y1="0" x2="100" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#047857" />
+    </linearGradient>
+
+    <clipPath id="shield-clip">
+      <path d="M 90 32 C 116 32, 137 41, 137 62 C 137 100, 107 127, 90 144 C 73 127, 43 100, 43 62 C 43 41, 64 32, 90 32 Z" />
     </clipPath>
   </defs>
+
+  <!-- Outer Shield (Gold Border) -->
+  <path d="M 90 25 C 120 25, 145 35, 145 60 C 145 105, 110 135, 90 155 C 70 135, 35 105, 35 60 C 35 35, 60 25, 90 25 Z" fill="url(#gold-grad)" />
+
+  <!-- Inner Shield (Pitch Green Background) -->
+  <path d="M 90 32 C 116 32, 137 41, 137 62 C 137 100, 107 127, 90 144 C 73 127, 43 100, 43 62 C 43 41, 64 32, 90 32 Z" fill="url(#bg-grad)" />
+
+  <!-- Shield Contents -->
+  <g clip-path="url(#shield-clip)">
+    <!-- Decorative Grid / Pitch Lines inside the Shield -->
+    <path d="M 90 32 V 144" stroke="#ffffff" stroke-opacity="0.08" stroke-width="2" />
+    <circle cx="90" cy="75" r="40" stroke="#ffffff" stroke-opacity="0.08" stroke-width="2" fill="none" />
+
+    <!-- Stylized FIFA World Cup Trophy Silhouette -->
+    <!-- Base -->
+    <path d="M 76 132 L 104 132 L 101 124 L 79 124 Z" fill="url(#trophy-gold)" />
+    <!-- Green Bands on Base -->
+    <rect x="80" y="129" width="20" height="2" rx="0.5" fill="url(#green-band)" />
+    <rect x="82" y="125" width="16" height="2" rx="0.5" fill="url(#green-band)" />
+    
+    <!-- Stem & Rising Spirals (Human Figures holding the Ball) -->
+    <!-- Center Stem -->
+    <path d="M 86 124 L 94 124 L 92 110 L 88 110 Z" fill="url(#trophy-gold)" />
+    
+    <!-- Left Spiral / Arm -->
+    <path d="M 88 110 C 84 105, 76 96, 73 88 C 70 80, 72 74, 76 74 C 80 74, 83 80, 87 90 L 90 100 Z" fill="url(#trophy-gold)" />
+    
+    <!-- Right Spiral / Arm -->
+    <path d="M 92 110 C 96 105, 104 96, 107 88 C 110 80, 108 74, 104 74 C 100 74, 97 80, 93 90 L 90 100 Z" fill="url(#trophy-gold)" />
+    
+    <!-- Soccer Ball (Globe) on top of the Trophy -->
+    <!-- Background Circle of the Ball -->
+    <circle cx="90" cy="74" r="18" fill="#ffffff" stroke="url(#trophy-gold)" stroke-width="1.5" />
+    
+    <!-- Soccer Ball Panel Lines -->
+    <!-- Center Pentagon -->
+    <polygon points="90,65.5 97,70.5 94.5,78.5 85.5,78.5 83,70.5" fill="#022c22" />
+    
+    <!-- Lines radiating from the center pentagon to the outer edges -->
+    <line x1="90" y1="65.5" x2="90" y2="56" stroke="#022c22" stroke-width="1.2" />
+    <line x1="97" y1="70.5" x2="105.5" y2="68" stroke="#022c22" stroke-width="1.2" />
+    <line x1="94.5" y1="78.5" x2="101" y2="86.5" stroke="#022c22" stroke-width="1.2" />
+    <line x1="85.5" y1="78.5" x2="79" y2="86.5" stroke="#022c22" stroke-width="1.2" />
+    <line x1="83" y1="70.5" x2="74.5" y2="68" stroke="#022c22" stroke-width="1.2" />
+    
+    <!-- Outer panel boundaries (Hexagons/Pentagons on sides) -->
+    <path d="M 90 56 L 98.5 60 L 105.5 68 L 106.5 77 L 101 86.5 L 90 91.5 L 79 86.5 L 73.5 77 L 74.5 68 L 81.5 60 Z" stroke="#022c22" stroke-width="1.2" fill="none" />
+    
+    <!-- Stars on the Sides -->
+    <!-- Left Star -->
+    <path d="M 58 52 L 60 55 L 63.5 55.5 L 61 58 L 61.8 61.5 L 58 59.5 L 54.2 61.5 L 55 58 L 52.5 55.5 L 56 55 Z" fill="url(#gold-grad)" />
+    <!-- Right Star -->
+    <path d="M 122 52 L 124 55 L 127.5 55.5 L 125 58 L 125.8 61.5 L 122 59.5 L 118.2 61.5 L 119 58 L 116.5 55.5 L 120 55 Z" fill="url(#gold-grad)" />
+  </g>
 </svg>

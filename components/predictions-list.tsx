@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { PHASE_FILTERS, type Match, type MatchPhase } from "@/lib/worldcup"
+import { PHASE_FILTERS, type Match, type MatchPhase } from "@/lib/worldcup-types"
 import { MatchCard } from "@/components/match-card"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"

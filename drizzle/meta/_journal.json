@@ -8,6 +8,20 @@
       "when": 1781202674018,
       "tag": "0000_yielding_tag",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1781558691287,
+      "tag": "0001_fast_grim_reaper",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781561364817,
+      "tag": "0002_tricky_madripoor",
+      "breakpoints": true
     }
   ]
 }

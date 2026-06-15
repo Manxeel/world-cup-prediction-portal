@@ -5,11 +5,12 @@ import { usePathname, useRouter } from "next/navigation"
 import { authClient } from "@/lib/auth-client"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Trophy, LogOut, ListChecks, BarChart3, User } from "lucide-react"
+import { Trophy, LogOut, ListChecks, BarChart3, User, Users } from "lucide-react"
 
 const links = [
   { href: "/", label: "Predicciones", icon: ListChecks },
   { href: "/tabla", label: "Posiciones", icon: BarChart3 },
+  { href: "/grupos", label: "Grupos", icon: Users },
   { href: "/perfil", label: "Mi perfil", icon: User },
 ]
 

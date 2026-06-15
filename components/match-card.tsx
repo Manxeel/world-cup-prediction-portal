@@ -1,11 +1,10 @@
 "use client"
 
-import { useState, useTransition, useMemo } from "react"
+import { useState, useTransition, useMemo, useEffect } from "react"
 import Image from "next/image"
 import { toast } from "sonner"
-import type { Match } from "@/lib/worldcup"
+import type { Match } from "@/lib/worldcup-types"
 import { savePrediction, getMatchPredictions } from "@/app/actions/predictions"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { Check, Lock, Users, ChevronDown, ChevronUp, Loader2 } from "lucide-react"
@@ -48,6 +47,37 @@ export function MatchCard({ match, initial }: { match: Match; initial?: PredValu
   const [away, setAway] = useState<string>(initial ? String(initial.awayScore) : "")
   const [saved, setSaved] = useState<boolean>(!!initial)
   const [pending, startTransition] = useTransition()
+
+  const [lastSaved, setLastSaved] = useState<{ home: string; away: string } | null>(
+    initial ? { home: String(initial.homeScore), away: String(initial.awayScore) } : null
+  )
+
+  useEffect(() => {
+    if (home === "" || away === "") return
+    if (lastSaved && lastSaved.home === home && lastSaved.away === away) return
+
+    setSaved(false)
+
+    // ponytail: 800ms debounce avoids spamming savePrediction on every keystroke.
+    // Ceiling: user exits page before timer fires. Upgrade: save on blur or beforeunload.
+    const timer = setTimeout(() => {
+      startTransition(async () => {
+        try {
+          await savePrediction({
+            matchId: match.id,
+            homeScore: Number(home),
+            awayScore: Number(away),
+          })
+          setSaved(true)
+          setLastSaved({ home, away })
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : "No se pudo guardar")
+        }
+      })
+    }, 800)
+
+    return () => clearTimeout(timer)
+  }, [home, away, match.id, lastSaved])
 
   const [showOthers, setShowOthers] = useState<boolean>(false)
   const [others, setOthers] = useState<{ userName: string; homeScore: number; awayScore: number; points: number | null }[]>([])
@@ -107,26 +137,6 @@ export function MatchCard({ match, initial }: { match: Match; initial?: PredValu
       ? `${match.stage} · Grupo ${match.group} · ${dateLabel}`
       : `${match.stage} · ${dateLabel}`
 
-  const handleSave = () => {
-    if (home === "" || away === "") {
-      toast.error("Debes ingresar ambos marcadores")
-      return
-    }
-    startTransition(async () => {
-      try {
-        await savePrediction({
-          matchId: match.id,
-          homeScore: Number(home),
-          awayScore: Number(away),
-        })
-        setSaved(true)
-        toast.success("Predicción guardada correctamente")
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "No se pudo guardar")
-      }
-    })
-  }
-
   return (
     <div className="rounded-xl border border-border bg-card p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
@@ -139,6 +149,10 @@ export function MatchCard({ match, initial }: { match: Match; initial?: PredValu
               <Lock className="h-3 w-3" /> Cerrado
             </span>
           )
+        ) : pending ? (
+          <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground animate-pulse">
+            <Loader2 className="h-3 w-3 animate-spin text-primary" /> Guardando...
+          </span>
         ) : saved ? (
           <span className="flex items-center gap-1 text-xs font-medium text-primary">
             <Check className="h-3 w-3" /> Guardada
@@ -171,14 +185,6 @@ export function MatchCard({ match, initial }: { match: Match; initial?: PredValu
         <p className="mt-3 text-center text-xs text-muted-foreground">
           Resultado final: {match.homeScore} - {match.awayScore}
         </p>
-      )}
-
-      {!locked && (
-        <div className="mt-3 flex justify-end">
-          <Button size="sm" onClick={handleSave} disabled={pending} className={cn(saved && "bg-primary/90")}>
-            {pending ? "Guardando..." : saved ? "Actualizar" : "Guardar"}
-          </Button>
-        </div>
       )}
 
       {locked && (

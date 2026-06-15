@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache"
 import { NextResponse } from "next/server"
 import { syncPoints } from "@/lib/sync-points"
+import { syncMatchesFromAPI } from "@/lib/worldcup"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -22,6 +23,7 @@ export async function GET(request: Request) {
   }
 
   try {
+    await syncMatchesFromAPI()
     const result = await syncPoints()
 
     revalidatePath("/")
