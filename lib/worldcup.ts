@@ -180,68 +180,74 @@ export async function syncMatchesFromAPI(): Promise<{ teams: number; matches: nu
   const teamsJson = (await teamsRes.json()) as { teams: RawTeam[] }
   const gamesJson = (await gamesRes.json()) as { games: RawGame[] }
 
-  // Upsert teams
-  for (const t of teamsJson.teams) {
+  // Batch upsert teams in one query
+  if (teamsJson.teams.length > 0) {
     await db
       .insert(teamTable)
-      .values({
-        id: t.id,
-        nameEn: t.name_en,
-        flag: t.flag,
-        fifaCode: t.fifa_code,
-        groupLetter: t.groups,
-      })
-      .onConflictDoUpdate({
-        target: teamTable.id,
-        set: {
+      .values(
+        teamsJson.teams.map((t) => ({
+          id: t.id,
           nameEn: t.name_en,
           flag: t.flag,
           fifaCode: t.fifa_code,
           groupLetter: t.groups,
+        }))
+      )
+      .onConflictDoUpdate({
+        target: teamTable.id,
+        set: {
+          nameEn: sql`EXCLUDED."nameEn"`,
+          flag: sql`EXCLUDED.flag`,
+          fifaCode: sql`EXCLUDED."fifaCode"`,
+          groupLetter: sql`EXCLUDED."groupLetter"`,
         },
       })
   }
 
-  // Upsert matches
-  const now = new Date()
-  for (const g of gamesJson.games) {
-    const finished = String(g.finished).toUpperCase() === "TRUE"
+  // Batch upsert matches in one query
+  if (gamesJson.games.length > 0) {
+    const now = new Date()
     await db
       .insert(matchTable)
-      .values({
-        id: g.id,
-        groupLetter: g.group,
-        matchday: g.matchday,
-        type: g.type,
-        homeTeamId: g.home_team_id,
-        awayTeamId: g.away_team_id,
-        homeScore: finished ? Number(g.home_score) : null,
-        awayScore: finished ? Number(g.away_score) : null,
-        finished,
-        kickoff: parseKickoff(g.local_date, g.stadium_id),
-        kickoffRaw: g.local_date,
-        stadiumId: g.stadium_id ?? null,
-        homeTeamLabel: g.home_team_label ?? null,
-        awayTeamLabel: g.away_team_label ?? null,
-        updatedAt: now,
-      })
+      .values(
+        gamesJson.games.map((g) => {
+          const finished = String(g.finished).toUpperCase() === "TRUE"
+          return {
+            id: g.id,
+            groupLetter: g.group,
+            matchday: g.matchday,
+            type: g.type,
+            homeTeamId: g.home_team_id,
+            awayTeamId: g.away_team_id,
+            homeScore: finished ? Number(g.home_score) : null,
+            awayScore: finished ? Number(g.away_score) : null,
+            finished,
+            kickoff: parseKickoff(g.local_date, g.stadium_id),
+            kickoffRaw: g.local_date,
+            stadiumId: g.stadium_id ?? null,
+            homeTeamLabel: g.home_team_label ?? null,
+            awayTeamLabel: g.away_team_label ?? null,
+            updatedAt: now,
+          }
+        })
+      )
       .onConflictDoUpdate({
         target: matchTable.id,
         set: {
-          groupLetter: g.group,
-          matchday: g.matchday,
-          type: g.type,
-          homeTeamId: g.home_team_id,
-          awayTeamId: g.away_team_id,
-          homeScore: finished ? Number(g.home_score) : null,
-          awayScore: finished ? Number(g.away_score) : null,
-          finished,
-          kickoff: parseKickoff(g.local_date, g.stadium_id),
-          kickoffRaw: g.local_date,
-          stadiumId: g.stadium_id ?? null,
-          homeTeamLabel: g.home_team_label ?? null,
-          awayTeamLabel: g.away_team_label ?? null,
-          updatedAt: now,
+          groupLetter: sql`EXCLUDED."groupLetter"`,
+          matchday: sql`EXCLUDED.matchday`,
+          type: sql`EXCLUDED.type`,
+          homeTeamId: sql`EXCLUDED."homeTeamId"`,
+          awayTeamId: sql`EXCLUDED."awayTeamId"`,
+          homeScore: sql`EXCLUDED."homeScore"`,
+          awayScore: sql`EXCLUDED."awayScore"`,
+          finished: sql`EXCLUDED.finished`,
+          kickoff: sql`EXCLUDED.kickoff`,
+          kickoffRaw: sql`EXCLUDED."kickoffRaw"`,
+          stadiumId: sql`EXCLUDED."stadiumId"`,
+          homeTeamLabel: sql`EXCLUDED."homeTeamLabel"`,
+          awayTeamLabel: sql`EXCLUDED."awayTeamLabel"`,
+          updatedAt: sql`EXCLUDED."updatedAt"`,
         },
       })
   }
@@ -262,6 +268,9 @@ async function syncIfStale(): Promise<void> {
   if (age > SYNC_STALE_MS) {
     try {
       await syncMatchesFromAPI()
+      // ponytail: dynamically import to prevent circular dependency, recalculate points when match data is synced
+      const { syncPoints } = await import("@/lib/sync-points")
+      await syncPoints()
     } catch (err) {
       // ponytail: if API is down but we have DB data, swallow the error
       if (latest) {

@@ -3,7 +3,7 @@ import { headers, cookies } from "next/headers"
 import Link from "next/link"
 import { auth } from "@/lib/auth"
 import { getMatches, type Match } from "@/lib/worldcup"
-import { getMyPredictions, getProfileStats, syncPoints } from "@/app/actions/predictions"
+import { getMyPredictions, getProfileStats } from "@/app/actions/predictions"
 import { SiteNav } from "@/components/site-nav"
 import { PredictionsList } from "@/components/predictions-list"
 import { Trophy, Target, TrendingUp } from "lucide-react"
@@ -30,8 +30,31 @@ export default async function HomePage() {
     loadError = true
   }
 
-  await syncPoints()
   const [predictions, stats] = await Promise.all([getMyPredictions(), getProfileStats()])
+
+  const now = Date.now()
+  const santiagoToday = new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "America/Santiago",
+  }).format(new Date(now))
+
+  const unpredictedCount = matches.filter((m) => {
+    if (m.finished) return false
+    const matchTime = new Date(m.kickoff)
+    if (matchTime.getTime() <= now) return false
+    if (predictions[m.id]) return false
+
+    const matchDayStr = new Intl.DateTimeFormat("en-US", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      timeZone: "America/Santiago",
+    }).format(matchTime)
+
+    return matchDayStr === santiagoToday
+  }).length
 
   return (
     <div className="min-h-svh bg-background">
@@ -58,6 +81,16 @@ export default async function HomePage() {
       </section>
 
       <main className="mx-auto max-w-5xl px-4 py-8">
+        {unpredictedCount > 0 && !loadError && (
+          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 flex items-center justify-between dark:border-amber-500/20 dark:bg-amber-500/10">
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+              ⚡ Tienes {unpredictedCount} partido{unpredictedCount === 1 ? "" : "s"} de hoy sin predicción
+            </p>
+            <a href="#partidos" className="text-xs font-semibold text-amber-700 hover:text-amber-900 transition-colors dark:text-amber-400 dark:hover:text-amber-300 underline underline-offset-4">
+              Predice ahora ↓
+            </a>
+          </div>
+        )}
         {loadError ? (
           <div className="rounded-xl border border-dashed border-destructive/40 bg-card py-12 text-center">
             <p className="font-medium text-foreground">No pudimos cargar los partidos</p>
@@ -68,7 +101,7 @@ export default async function HomePage() {
           </div>
         ) : (
           <>
-            <div className="mb-4 flex items-center justify-between">
+            <div id="partidos" className="mb-4 flex items-center justify-between">
               <h2 className="font-heading text-2xl font-bold uppercase tracking-wide text-foreground">
                 Partidos
               </h2>

@@ -1,30 +1,37 @@
 import { db } from "@/lib/db"
-import { prediction } from "@/lib/db/schema"
-import { computePoints, getMatchesById } from "@/lib/worldcup"
-import { eq } from "drizzle-orm"
+import { sql } from "drizzle-orm"
 
 /** Recalculate points for all finished matches. Idempotent — safe to call often. */
 export async function syncPoints(): Promise<{ updated: number }> {
   try {
-    const matches = await getMatchesById()
-    const rows = await db.select().from(prediction)
-    let updated = 0
+    // ponytail: Perform single SQL update to calculate scores on the DB engine
+    // instead of looping and making N roundtrips.
+    const result = await db.execute(sql`
+      UPDATE prediction
+      SET points = CASE
+        -- Exact score match
+        WHEN prediction."homeScore" = match."homeScore" AND prediction."awayScore" = match."awayScore" THEN 3
+        -- Same outcome (win/lose/draw)
+        WHEN sign(prediction."homeScore" - prediction."awayScore") = sign(match."homeScore" - match."awayScore") THEN 1
+        -- Wrong prediction
+        ELSE 0
+      END
+      FROM match
+      WHERE prediction."matchId" = match.id
+        AND match.finished = true
+        AND match."homeScore" IS NOT NULL
+        AND match."awayScore" IS NOT NULL
+        AND (
+          prediction.points IS NULL 
+          OR prediction.points != CASE
+            WHEN prediction."homeScore" = match."homeScore" AND prediction."awayScore" = match."awayScore" THEN 3
+            WHEN sign(prediction."homeScore" - prediction."awayScore") = sign(match."homeScore" - match."awayScore") THEN 1
+            ELSE 0
+          END
+        )
+    `)
 
-    for (const r of rows) {
-      const match = matches.get(r.matchId)
-      if (!match || !match.finished || match.homeScore === null || match.awayScore === null) {
-        continue
-      }
-      const pts = computePoints(
-        { homeScore: r.homeScore, awayScore: r.awayScore },
-        { homeScore: match.homeScore, awayScore: match.awayScore },
-      )
-      if (r.points !== pts) {
-        await db.update(prediction).set({ points: pts }).where(eq(prediction.id, r.id))
-        updated++
-      }
-    }
-
+    const updated = result.rowCount ?? 0
     return { updated }
   } catch (err) {
     console.error("Failed to sync points:", err)

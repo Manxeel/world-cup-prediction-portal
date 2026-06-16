@@ -2,9 +2,9 @@ import { redirect } from "next/navigation"
 import { headers } from "next/headers"
 import Link from "next/link"
 import { auth } from "@/lib/auth"
-import { getProfileStats, syncPoints } from "@/app/actions/predictions"
+import { getProfileStats, getMyPredictionHistory } from "@/app/actions/predictions"
 import { SiteNav } from "@/components/site-nav"
-import { Trophy, Target, TrendingUp, ListChecks, CheckCircle2, BarChart3, Percent, Sparkles } from "lucide-react"
+import { Trophy, Target, TrendingUp, ListChecks, CheckCircle2, BarChart3, Percent, Sparkles, Flame, Award } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
@@ -13,8 +13,8 @@ export default async function ProfilePage() {
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user) redirect("/sign-in")
 
-  await syncPoints()
   const stats = await getProfileStats()
+  const history = await getMyPredictionHistory()
 
   const radius = 40
   const circumference = 2 * Math.PI * radius // 251.327
@@ -179,6 +179,8 @@ export default async function ProfilePage() {
           <StatCard icon={BarChart3} label="Resultado correcto" value={stats.correctResult} />
           <StatCard icon={CheckCircle2} label="Partidos puntuados" value={stats.scored} />
           <StatCard icon={ListChecks} label="Predicciones hechas" value={stats.predictions} />
+          <StatCard icon={Flame} label="Racha actual" value={stats.currentStreak} />
+          <StatCard icon={Award} label="Mejor racha" value={stats.bestStreak} />
         </div>
 
         <div className="mt-8 rounded-xl border border-border bg-card p-5">
@@ -197,6 +199,40 @@ export default async function ProfilePage() {
             </li>
           </ul>
         </div>
+
+        {history.length > 0 && (
+          <div className="mt-6 rounded-xl border border-border bg-card p-5">
+            <h2 className="font-heading text-lg font-bold uppercase tracking-wide text-card-foreground mb-4">
+              Historial de predicciones
+            </h2>
+            <div className="space-y-2">
+              {history.map((h) => (
+                <div key={h.matchId} className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2 text-sm">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="truncate">{h.homeName}</span>
+                    <span className="text-muted-foreground">vs</span>
+                    <span className="truncate">{h.awayName}</span>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0 ml-2">
+                    <div className="text-xs text-muted-foreground">
+                      <span>Tu: {h.predHome}-{h.predAway}</span>
+                      <span className="mx-1">·</span>
+                      <span>Real: {h.actualHome}-{h.actualAway}</span>
+                    </div>
+                    <span className={cn(
+                      "rounded-full px-2 py-0.5 text-xs font-bold tabular-nums",
+                      h.points === 3 ? "bg-primary/15 text-primary" :
+                      h.points === 1 ? "bg-blue-500/15 text-blue-500" :
+                      "bg-muted text-muted-foreground"
+                    )}>
+                      +{h.points ?? 0}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="mt-6 flex flex-wrap gap-3">
           <Link

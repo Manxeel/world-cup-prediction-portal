@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation"
 import { headers } from "next/headers"
 import { auth } from "@/lib/auth"
-import { getLeaderboard, syncPoints } from "@/app/actions/predictions"
+import { getLeaderboard } from "@/app/actions/predictions"
 import { SiteNav } from "@/components/site-nav"
 import { cn } from "@/lib/utils"
 import { Trophy, Medal } from "lucide-react"
@@ -12,7 +12,6 @@ export default async function LeaderboardPage() {
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user) redirect("/sign-in")
 
-  await syncPoints()
   const board = await getLeaderboard()
   const myId = session.user.id
 

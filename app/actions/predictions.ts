@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { prediction, user } from "@/lib/db/schema"
 import { syncPoints as runSyncPoints } from "@/lib/sync-points"
-import { getMatchesById } from "@/lib/worldcup"
+import { getMatches, getMatchesById } from "@/lib/worldcup"
 import { and, eq, sql } from "drizzle-orm"
 import { headers } from "next/headers"
 import { revalidatePath } from "next/cache"
@@ -93,6 +93,8 @@ export type ProfileStats = {
   correctResult: number
   rank: number
   totalPlayers: number
+  currentStreak: number
+  bestStreak: number
 }
 
 export async function getProfileStats(): Promise<ProfileStats> {
@@ -110,6 +112,29 @@ export async function getProfileStats(): Promise<ProfileStats> {
   const exact = myRows.filter((r) => r.points === 3).length
   const correctResult = myRows.filter((r) => r.points === 1).length
 
+  // Compute streaks from scored predictions sorted by kickoff
+  const matchMap = await getMatchesById()
+  const scoredRows = myRows
+    .filter((r) => r.points !== null)
+    .sort((a, b) => {
+      const ka = matchMap.get(a.matchId)?.kickoff ?? ""
+      const kb = matchMap.get(b.matchId)?.kickoff ?? ""
+      return ka.localeCompare(kb)
+    })
+
+  let currentStreak = 0
+  let bestStreak = 0
+  let streak = 0
+  for (const r of scoredRows) {
+    if (r.points! > 0) {
+      streak++
+      if (streak > bestStreak) bestStreak = streak
+    } else {
+      streak = 0
+    }
+  }
+  currentStreak = streak
+
   return {
     totalPoints: me?.totalPoints ?? 0,
     predictions: myRows.length,
@@ -118,6 +143,8 @@ export async function getProfileStats(): Promise<ProfileStats> {
     correctResult,
     rank: idx >= 0 ? idx + 1 : board.length + 1,
     totalPlayers: board.length,
+    currentStreak,
+    bestStreak,
   }
 }
 
@@ -143,4 +170,48 @@ export async function getMatchPredictions(matchId: string) {
     .orderBy(sql`coalesce(${prediction.points}, 0) desc, ${user.name} asc`)
 
   return rows
+}
+
+export type PredictionHistoryRow = {
+  matchId: string
+  homeName: string
+  awayName: string
+  homeFlag: string
+  awayFlag: string
+  kickoff: string
+  finished: boolean
+  predHome: number
+  predAway: number
+  actualHome: number | null
+  actualAway: number | null
+  points: number | null
+}
+
+export async function getMyPredictionHistory(): Promise<PredictionHistoryRow[]> {
+  const userId = await getUserId()
+  const rows = await db.select().from(prediction).where(eq(prediction.userId, userId))
+  const matches = await getMatches()
+  const matchMap = new Map(matches.map((m) => [m.id, m]))
+
+  return rows
+    .map((r): PredictionHistoryRow | null => {
+      const m = matchMap.get(r.matchId)
+      if (!m || !m.finished) return null
+      return {
+        matchId: r.matchId,
+        homeName: m.homeName,
+        awayName: m.awayName,
+        homeFlag: m.homeFlag,
+        awayFlag: m.awayFlag,
+        kickoff: m.kickoff,
+        finished: m.finished,
+        predHome: r.homeScore,
+        predAway: r.awayScore,
+        actualHome: m.homeScore,
+        actualAway: m.awayScore,
+        points: r.points,
+      }
+    })
+    .filter((r): r is PredictionHistoryRow => r !== null)
+    .sort((a, b) => b.kickoff.localeCompare(a.kickoff))
 }
